@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import sqlite3
+import os
 
 def load_raw_from_db(db_path: str) -> pd.DataFrame:
     """
@@ -147,7 +148,10 @@ def save_cleaned_to_csv(df: pd.DataFrame, path: str = "data/processed/cleaned_su
         df: Cleaned DataFrame.
         path: Output CSV file path.
     """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
     df.to_csv(path, index=False)
+    print(f"Cleaned data saved to {path}")
 
 def run_cleaning(db_path: str):
     """
