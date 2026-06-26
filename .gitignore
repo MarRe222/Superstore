@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+src/dontupload.py
+notebooks/01.1_data_exploration.ipynb
