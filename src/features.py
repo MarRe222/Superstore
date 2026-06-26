@@ -20,7 +20,7 @@ def load_cleaned_from_db(db_path: str) -> pd.DataFrame:
     return df
 
 
-def add_profit_margin(df: pd.DataFrame) -> pd.DataFrame:
+def _add_profit_margin(df: pd.DataFrame) -> pd.DataFrame:
 
     """
     Add a profit margin feature.
@@ -39,7 +39,7 @@ def add_profit_margin(df: pd.DataFrame) -> pd.DataFrame:
     df["Profit Margin"] = df["Profit"] / df["Sales"].replace(0, np.nan)
     return df
 
-def add_date_features(df: pd.DataFrame) -> pd.DataFrame:
+def _add_date_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add calendar-based date features.
 
@@ -66,7 +66,7 @@ def add_date_features(df: pd.DataFrame) -> pd.DataFrame:
     df["ship_days"] = (df["Ship Date"] - df["Order Date"]).dt.days
     return df
 
-def add_yoy_growth(df: pd.DataFrame) -> pd.DataFrame:
+def _add_yoy_growth(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add year-over-year (YoY) sales growth.
 
@@ -99,7 +99,7 @@ def add_yoy_growth(df: pd.DataFrame) -> pd.DataFrame:
     )
     return df
     
-def add_mom_growth(df: pd.DataFrame) -> pd.DataFrame:
+def _add_mom_growth(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add month-over-month (MoM) sales growth.
 
@@ -132,7 +132,7 @@ def add_mom_growth(df: pd.DataFrame) -> pd.DataFrame:
     return df
     
 
-def add_sales_per_order(df: pd.DataFrame) -> pd.DataFrame:
+def _add_sales_per_order(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add total sales per order.
 
@@ -157,7 +157,7 @@ def add_sales_per_order(df: pd.DataFrame) -> pd.DataFrame:
     df = df.merge(order_sales, on="Order ID", how="left")
     return df
 
-def add_total_sales_per_customer(df: pd.DataFrame) -> pd.DataFrame:
+def _add_total_sales_per_customer(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add total lifetime sales per customer.
 
@@ -183,7 +183,7 @@ def add_total_sales_per_customer(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_customer_lifetime_profit(df: pd.DataFrame) -> pd.DataFrame:
+def _add_customer_lifetime_profit(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add total lifetime profit per customer.
 
@@ -209,7 +209,7 @@ def add_customer_lifetime_profit(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_order_profit(df: pd.DataFrame) -> pd.DataFrame:
+def _add_order_profit(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add total profit per order.
 
@@ -234,7 +234,7 @@ def add_order_profit(df: pd.DataFrame) -> pd.DataFrame:
     df = df.merge(order_profit, on="Order ID", how="left")
     return df
 
-def add_order_margin(df: pd.DataFrame) -> pd.DataFrame:
+def _add_order_margin(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add profit margin at the order level.
 
@@ -250,21 +250,19 @@ def add_order_margin(df: pd.DataFrame) -> pd.DataFrame:
     Notes:
         Requires both Sales and Profit to be non-zero for meaningful margins.
     """
-
     df = df.copy()
     order_margin = (
-    df.groupby("Order ID")
-      .agg({"Profit": "sum", "Sales": "sum"})
-      .reset_index()
+        df.groupby("Order ID")
+          .apply(lambda x: x["Profit"].sum() / x["Sales"].sum())
+          .rename("order_margin")
+          .reset_index()
     )
-    order_margin["order_margin"] = (
-    order_margin["Profit"] / order_margin["Sales"]
-    )
-    df = df.merge(order_margin["Order Id", "order_margin"], on= "Order ID", how="left")
+
+    df = df.merge(order_margin, on="Order ID", how="left")
 
     return df
 
-def add_category_margin(df: pd.DataFrame) -> pd.DataFrame:
+def _add_category_margin(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add profit margin at the category level.
 
@@ -280,18 +278,24 @@ def add_category_margin(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
     category_margin = (
-    df.groupby("Category")
-      .agg({"Profit": "sum", "Sales": "sum"})
-      .reset_index()
+        df.groupby("Category")
+          .agg(total_profit=("Profit", "sum"),
+               total_sales=("Sales", "sum"))
+          .reset_index()
     )
-    category_margin["category_margin"] = (
-    category_margin["Profit"] / category_margin["Sales"]
-    )
-    df = df.merge(category_margin, on= "Category", how="left")
 
+    category_margin["category_margin"] = (
+        category_margin["total_profit"] / category_margin["total_sales"]
+    )
+
+    df = df.merge(
+        category_margin[["Category", "category_margin"]],
+        on="Category",
+        how="left"
+    )
     return df
 
-def add_category_contribution(df: pd.DataFrame) -> pd.DataFrame:
+def _add_category_contribution(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add each category's contribution to total sales.
 
@@ -306,14 +310,18 @@ def add_category_contribution(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     df = df.copy()
+
     category_sales = (
         df.groupby("Category")["Sales"]
         .sum()
+        .rename("category_total_sales")
         .reset_index()
     )
+    total_sales = category_sales["category_total_sales"].sum()
     category_sales["category_contribution"] = (
-        category_sales["Sales"] / category_sales["Sales"].sum()
+        category_sales["category_total_sales"] / total_sales
     )
+
     df = df.merge(
         category_sales[["Category", "category_contribution"]],
         on="Category",
@@ -322,7 +330,7 @@ def add_category_contribution(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_region_contribution(df: pd.DataFrame) -> pd.DataFrame:
+def _add_region_contribution(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add each region's contribution to total sales.
 
@@ -346,14 +354,13 @@ def add_region_contribution(df: pd.DataFrame) -> pd.DataFrame:
         region_sales["Sales"] / region_sales["Sales"].sum()
     )
     df = df.merge(
-        region_sales[["Region", "Region_Sales"]],
+        region_sales[["Region", "region_contribution"]],
         on="Region",
         how="left"
     )
     return df
 
-
-def add_high_discount_flag(df: pd.DataFrame) -> pd.DataFrame:
+def _add_high_discount_flag(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add a binary flag indicating high-discount rows.
 
@@ -370,7 +377,7 @@ def add_high_discount_flag(df: pd.DataFrame) -> pd.DataFrame:
     df["high_discount"] = (df["Discount"] > 0.3).astype(int)
     return df
 
-def add_discount_impact(df: pd.DataFrame) -> pd.DataFrame:
+def _add_discount_impact(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add a discount impact feature.
 
@@ -387,9 +394,9 @@ def add_discount_impact(df: pd.DataFrame) -> pd.DataFrame:
     df["discount_impact"] = df["Discount"] * df["Sales"]
     return df
 
-def add_profit_ratio(df: pd.DataFrame) -> pd.DataFrame:
+def _add_profit_ratio(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Add profit ratio per unit.
+    __________________________________________add profit ratio per unit.
 
     Computes profit per quantity sold for each row.
 
@@ -404,7 +411,7 @@ def add_profit_ratio(df: pd.DataFrame) -> pd.DataFrame:
     df["profit_ratio"] = df["Profit"] / df["Quantity"]
     return df
 
-def add_order_size(df: pd.DataFrame) -> pd.DataFrame:
+def _add_order_size(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add total quantity per order.
 
@@ -428,3 +435,70 @@ def add_order_size(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.merge(order_size, on="Order ID", how="left")
     return df
+
+def create_features(df: pd.DataFrame) -> pd.DataFrame:
+
+    return (
+        df.copy()
+        .pipe(_add_profit_margin)
+        .pipe(_add_date_features)
+        .pipe(_add_yoy_growth)
+        .pipe(_add_mom_growth)
+        .pipe(_add_sales_per_order)
+        .pipe(_add_total_sales_per_customer)
+        .pipe(_add_customer_lifetime_profit)
+        .pipe(_add_order_profit)
+        .pipe(_add_order_margin)
+        .pipe(_add_category_margin)
+        .pipe(_add_category_contribution)
+        .pipe(_add_region_contribution)
+        .pipe(_add_high_discount_flag)
+        .pipe(_add_discount_impact)
+        .pipe(_add_profit_ratio)
+        .pipe(_add_order_size)
+    )
+
+def save_features_to_csv(df, output_path="data/processed/final_superstore.csv"):
+    """
+    Save the final feature-engineered dataset to a CSV file.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing engineered features.
+    output_path : str
+        File path where the CSV will be saved.
+    """
+    df.to_csv(output_path, index=False)
+
+def run_features(db_path="database/superstore.db"):
+    """
+    Load cleaned data from SQLite, create engineered features,
+    save the final dataset back to SQLite, and export to CSV.
+
+    Parameters
+    ----------
+    db_path : str
+        Path to the SQLite database.
+    """
+
+    # Load cleaned data
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql("SELECT * FROM cleaned_superstore", conn)
+
+    # Convert date columns (SQLite loads them as strings)
+    df["Order Date"] = pd.to_datetime(df["Order Date"])
+    df["Ship Date"] = pd.to_datetime(df["Ship Date"])
+
+    # Create features
+    df_features = create_features(df)
+
+    # Save back to SQLite
+    df_features.to_sql("final_superstore", conn, if_exists="replace", index=False)
+
+    # Save to CSV
+    save_features_to_csv(df_features)
+
+    conn.close()
+
+    print("Feature engineering complete. Saved to SQLite and CSV.")
